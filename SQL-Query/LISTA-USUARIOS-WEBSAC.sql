@@ -7,7 +7,7 @@ USE db_visual_rodopar
 select * from web_usuario
 
 -- ATUALIZA SENHA DE ACESSO VR WEBSAC
-UPDATE WEB_USUARIO SET SENHA = 'EH[oQFmY' WHERE EMAIL = 'adm@datapar.com.br' --SENHA 123456 ...
+UPDATE WEB_USUARIO SET SENHA = 'EH[oQFmY' WHERE EMAIL = 'adm@datapar.com.br'
 
 
 
