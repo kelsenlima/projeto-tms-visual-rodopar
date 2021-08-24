@@ -1,0 +1,628 @@
+CREATE VIEW [DBO].[VW_CARGA_MANIFESTOS]
+AS
+
+/* INICIO DO SCRIPT 
+ SCRIPT VISUAL RODOPAR  
+ ## ID ......: 
+ ## AUTOR ...: Kelsen Lima
+ ## DATA ....: 05/04/2018 
+ ## RESUMO ..: View para carga de dados de manifestos/NFs para o aplicativo agileprocess
+ ## REVISAO..: 19-Inclusão nova regra na clausula where para retornar apenas parceiro comercial com condição 'Integrar_Agile-1267'
+ ## REVISAO..: no campo observação, onde: 1= Manifesto Lotação, 2= Transferencia, 6= Distribuição 7= Coleta
+*/
+
+select
+
+RTRIM(CAST(V.CODFIL AS CHAR(02))) +'/'+ (SELECT TOP 1 RODFIL.NOMEAB FROM RODFIL WHERE V.CODFIL = RODFIL.CODFIL) AS 'user_depot_unique_code',
+
+RTRIM(CAST(V.CODMAN AS CHAR(06))) +'/' + CAST(V.FILMAN AS varchar(02)) + '/'+ V.SERMAN AS 'user_waybill_unique_code',    																														
+
+(SELECT RODVEI.NUMVEI FROM RODVEI WHERE RODVEI.CODVEI = V.PLACA) AS 'user_vehicle_unique_code',
+
+FORMAT(V.DATA_PREVISAO_SAIDA,'dd/MM/yyyy') AS 'execution_date',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.CODCGC FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	IIF((SELECT RODOCS.ID_ENDCOL FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC) IS NOT NULL,
+
+		(SELECT IIF(RODCLI.FISJUR='F',RODCLI.CODCPF,RODCLI.CODCGC) FROM RODCLI INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC)
+		
+		,
+
+		(SELECT IIF(RODCLI.FISJUR='F',RODCLI.CODCPF,RODCLI.CODCGC) FROM RODCLI INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+		
+		, 
+	
+		IIF(CAST(V.TERENT AS int) <> 0,
+
+			upper((SELECT IIF(RODCLI.FISJUR='F',RODCLI.CODCPF,RODCLI.CODCGC) FROM RODCLI WHERE RODCLI.CODCLIFOR = V.TERENT))
+
+		,
+
+			IIF(CAST(RED.REDMU2 AS int) <> 0,
+	
+				upper((SELECT IIF(RODCLI.FISJUR='F',RODCLI.CODCPF,RODCLI.CODCGC) FROM RODCLI WHERE RODCLI.CODCLIFOR = RED.REDMU2))
+		
+			,
+
+			IIF((select top 1 UPPER(RODEND.ENDENT) from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES) IS NULL, 
+	
+				(select IIF(RODCLI.FISJUR='F',RODCLI.CODCPF,RODCLI.CODCGC) from RODCLI where RODCLI.CODCLIFOR = V.CODDES)
+		
+			, 
+	
+				(select IIF(RODCLI.FISJUR='F',RODCLI.CODCPF,RODCLI.CODCGC) from RODCLI where RODCLI.CODCLIFOR = V.CODDES)))
+
+		))) AS 'user_client_unique_code'
+
+,
+
+user_service_unique_code = CASE
+
+	WHEN V.DOC_ORIGEM = 'S'
+
+		THEN (RTRIM(CAST(V.CODDOC AS CHAR(06)))+'/'+RTRIM(CAST(V.FILDOC AS CHAR(02)))+'/'+UPPER(V.SERDOC)+' - '+RTRIM(CAST(V.ID_ICO AS CHAR(10))))
+
+	WHEN V.DOC_ORIGEM = 'C'
+
+		THEN (RTRIM(CAST(V.CODDOC AS CHAR(06)))+'/'+RTRIM(CAST(V.FILDOC AS CHAR(02)))+'/'+UPPER(V.SERDOC)+' - '+RTRIM(CAST(V.ID_NFC AS CHAR(10)))+' - '+RTRIM(CAST(V.NOTFIS AS CHAR(10)))+'/'+UPPER(V.SER_NF))
+
+	WHEN V.DOC_ORIGEM = 'O'
+
+		THEN (RTRIM(CAST(V.CODDOC AS CHAR(06)))+'/'+RTRIM(CAST(V.FILDOC AS CHAR(02)))+'/'+UPPER(V.SERDOC)+' - '+RTRIM(CAST(V.ID_IOS AS CHAR(10)))+' - '+RTRIM(CAST(V.NOTFIS AS CHAR(10)))+'/'+UPPER(V.SER_NF))
+
+END,
+
+IIF(V.SERMAN='U','C','E') AS 'service_type',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.RAZSOC FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF (V.TIPMAN = '7'
+
+	,
+
+	UPPER((SELECT RODCLI.RAZSOC FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODREM))
+
+	,
+
+	IIF(CAST(RED.REDMU2 AS int) <> 0,
+
+		UPPER((SELECT RODCLI.RAZSOC FROM RODCLI WHERE RODCLI.CODCLIFOR = RED.REDMU2))
+
+		,
+
+		UPPER(CLI.RAZSOC)))) AS 'company_name',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.NOMEAB FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF (V.TIPMAN = '7'
+
+	,
+
+	UPPER((SELECT RODCLI.NOMEAB FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODREM))
+
+	,
+
+	IIF(CAST(RED.REDMU2 AS int) <> 0,
+
+		UPPER((SELECT RODCLI.NOMEAB FROM RODCLI WHERE RODCLI.CODCLIFOR = RED.REDMU2))
+
+		,
+
+		UPPER(CLI.NOMEAB)))) AS 'informal_company_name',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.NOMEAB FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	UPPER((SELECT RODOCS.SOLICI FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+
+	,
+
+	IIF(CAST(RED.REDMU2 AS int) <> 0,
+
+			UPPER((CLI.COMPLE)) 
+		,
+			UPPER((SELECT TOP 1 RODCTC.NOMECT FROM RODCTC WHERE SITUAC = 'A' AND RODCTC.CODCLIFOR = RED.REDMU2))))) AS 'contact_name',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.TELEFO FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	UPPER((SELECT RODOCS.SOLICI FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+
+	,
+
+	IIF(CAST(RED.REDMU2 AS int) <> 0,
+
+		UPPER((SELECT RODCLI.PRTEL1 FROM RODCLI WHERE RODCLI.CODCLIFOR = RED.REDMU2))	
+
+		,
+
+		CLI.PRTEL1))) AS 'contact_phone',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 UPPER(RODFIL.ENDERE) FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	IIF((SELECT RODOCS.ID_ENDCOL FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC) IS NOT NULL,
+
+		(SELECT UPPER(RODEND.ENDENT) FROM RODEND INNER JOIN RODOCS ON RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC AND
+		RODEND.ID = RODOCS.ID_ENDCOL)
+		
+		,
+
+		(SELECT UPPER(RODCLI.ENDERE) FROM RODCLI INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+		
+		,
+	
+		IIF(CAST(V.TERENT AS int) <> 0,
+
+			upper((SELECT RODCLI.ENDERE FROM RODCLI WHERE RODCLI.CODCLIFOR = V.TERENT))
+
+		,
+
+			IIF(CAST(RED.REDMU2 AS int) <> 0,
+	
+				upper((SELECT RODCLI.ENDERE FROM RODCLI WHERE RODCLI.CODCLIFOR = RED.REDMU2))
+		
+			,
+
+			IIF((select top 1 UPPER(RODEND.ENDENT) from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES) IS NULL, 
+	
+				upper(CLI.ENDERE)
+		
+			, 
+	
+				(select top 1 UPPER(RODEND.ENDENT) from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES)))
+
+		))) AS 'address_name',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.NUMERO FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	IIF((SELECT RODOCS.ID_ENDCOL FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC) IS NOT NULL,
+
+		(SELECT RODEND.NUMERO FROM RODEND INNER JOIN RODOCS ON RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC AND
+		RODEND.ID = RODOCS.ID_ENDCOL)
+		
+		,
+
+		(SELECT RODCLI.NUMERO FROM RODCLI INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+		
+		,
+
+
+		IIF(CAST(V.TERENT AS int) <> 0,
+
+			(SELECT RODCLI.NUMERO FROM RODCLI WHERE RODCLI.CODCLIFOR = V.TERENT)
+
+		,
+	
+			IIF(CAST(RED.REDMU2 AS int) <> 0,
+	
+				(SELECT RODCLI.NUMERO FROM RODCLI WHERE RODCLI.CODCLIFOR = RED.REDMU2)
+		
+			,
+
+			IIF((select top 1 RODEND.ENDENT from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES) IS NULL, 
+	
+				CLI.NUMERO
+		
+			, 
+		
+				(select top 1 RODEND.NUMERO from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES)))
+
+		))) AS 'address_number',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.COMPLE FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+	,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	IIF((SELECT RODOCS.ID_ENDCOL FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC) IS NOT NULL,
+
+		(SELECT RODEND.REFEND FROM RODEND INNER JOIN RODOCS ON RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC AND
+		RODEND.ID = RODOCS.ID_ENDCOL)
+		
+		,
+
+		(SELECT RODCLI.COMPLE FROM RODCLI INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+		
+		,
+
+	CLI.COMPLE)) as 'address_complement',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.BAIRRO FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	IIF((SELECT RODOCS.ID_ENDCOL FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC) IS NOT NULL,
+
+		(SELECT UPPER(RODEND.BAIENT) FROM RODEND INNER JOIN RODOCS ON RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC AND
+		RODEND.ID = RODOCS.ID_ENDCOL)
+		
+		,
+
+		(SELECT UPPER(RODCLI.BAIRRO) FROM RODCLI INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+		
+		,
+
+		IIF(CAST(V.TERENT AS int) <> 0,
+
+			upper((SELECT RODCLI.BAIRRO FROM RODCLI WHERE RODCLI.CODCLIFOR = V.TERENT))
+
+		,
+
+			IIF(CAST(RED.REDMU2 AS int) <> 0,
+	
+				upper((SELECT RODCLI.BAIRRO FROM RODCLI WHERE RODCLI.CODCLIFOR = RED.REDMU2))
+		
+			,
+
+			IIF((select top 1 RODEND.ENDENT from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES) IS NULL, 
+	
+				upper(CLI.BAIRRO)
+		
+			, 
+	
+				upper((select top 1 RODEND.BAIENT from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES))))
+
+		))) AS 'address_district',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	upper((SELECT RODMUN.DESCRI FROM RODMUN,RODFIL WHERE RODFIL.CODMUN = RODMUN.CODMUN and RODFIL.CODFIL = V.FILDES))
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	IIF((SELECT RODOCS.ID_ENDCOL FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC) IS NOT NULL,
+
+		(SELECT RODmun.DESCRI FROM RODMUN INNER JOIN RODEND ON RODEND.CODMUN = RODMUN.CODMUN INNER JOIN RODOCS ON RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC AND
+		RODEND.ID = RODOCS.ID_ENDCOL)
+		
+		,
+
+		(SELECT RODMUN.DESCRI FROM RODMUN INNER JOIN RODCLI ON RODCLI.CODMUN = RODMUN.CODMUN INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+		
+		,
+
+		IIF(CAST(V.TERENT AS int) <> 0,
+
+			upper((SELECT RODMUN.DESCRI FROM RODMUN,RODCLI WHERE RODCLI.CODMUN = RODMUN.CODMUN and RODCLI.CODCLIFOR = V.TERENT))
+
+		,
+
+			IIF(CAST(RED.REDMU2 AS int) <> 0,
+	
+				upper((SELECT RODMUN.DESCRI FROM RODMUN,RODCLI WHERE RODCLI.CODMUN = RODMUN.CODMUN and RODCLI.CODCLIFOR = RED.REDMU2))
+		
+			,
+
+			IIF((select top 1 RODEND.ENDENT from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES) IS NULL,
+	
+				upper((SELECT RODMUN.DESCRI FROM RODMUN WHERE CLI.CODMUN = RODMUN.CODMUN))
+		
+			,
+	
+				upper((select top 1 RODMUN.DESCRI from RODMUN,RODEND,RODCLI where V.ID_ENDENT = RODEND.ID AND RODEND.CODMUN = RODMUN.CODMUN and RODCLI.CODCLIFOR = V.CODDES))))
+
+		))) AS 'address_city',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	upper((SELECT RODMUN.ESTADO FROM RODMUN,RODFIL WHERE RODFIL.CODMUN = RODMUN.CODMUN and RODFIL.CODFIL = V.FILDES))
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	IIF((SELECT RODOCS.ID_ENDCOL FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC) IS NOT NULL,
+
+		(SELECT dbo.RODMUN.ESTADO FROM RODMUN INNER JOIN RODEND ON RODEND.CODMUN = RODMUN.CODMUN INNER JOIN RODOCS ON RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC AND
+		RODEND.ID = RODOCS.ID_ENDCOL)
+		
+		,
+
+		(SELECT RODMUN.ESTADO FROM RODMUN INNER JOIN RODCLI ON RODCLI.CODMUN = RODMUN.CODMUN INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+		
+		,
+
+		IIF(CAST(V.TERENT AS int) <> 0,                                                                                                /*Se houver um terminal de entrega associado*/
+
+			(SELECT RODMUN.ESTADO FROM RODMUN,RODCLI WHERE RODCLI.CODMUN = RODMUN.CODMUN and RODCLI.CODCLIFOR = V.TERENT)              /*Envia o endereço completo do terminal de entrega*/
+	
+		,
+
+			(IIF(CAST(RED.REDMU2 AS int) <> 0,                                                                                         /*Se houver um endereço de redespacho associado*/
+	
+				(SELECT RODMUN.ESTADO FROM RODMUN,RODCLI WHERE RODCLI.CODMUN = RODMUN.CODMUN and RODCLI.CODCLIFOR = RED.REDMU2)        /*Envia o endereço do redespacho*/
+
+			,
+
+			IIF((select top 1 RODEND.ENDENT from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES) IS NULL, /*Se não houver um endereço de entrega adicional no documento de entrega*/
+
+				(SELECT RODMUN.ESTADO FROM RODMUN WHERE CLI.CODMUN = RODMUN.CODMUN)                                                    /*Envia o endereço de entrega principal do destinatário*/
+
+			, 
+
+				(select top 1 RODEND.ESTENT from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES))))       /*Caso contrário, envia o endereço de entrega adicional do destinatário*/
+
+		))) AS 'address_state',
+
+IIF (V.TIPMAN = '2' 
+
+	, 
+	
+	(SELECT TOP 1 RODFIL.CODCEP FROM RODFIL WHERE V.FILDES = RODFIL.CODFIL)
+	
+,
+
+	IIF(V.TIPMAN = '7'
+
+	,
+
+	IIF((SELECT RODOCS.ID_ENDCOL FROM RODOCS WHERE RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC) IS NOT NULL,
+
+		(SELECT RODEND.CEPENT FROM RODEND INNER JOIN RODOCS ON RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC AND
+		RODEND.ID = RODOCS.ID_ENDCOL)
+		
+		,
+
+		(SELECT RODCLI.CODCEP FROM RODCLI INNER JOIN RODOCS ON RODCLI.CODCLIFOR = RODOCS.CODREM AND RODOCS.CODOCS = V.CODDOC AND RODOCS.SEROCS = V.SERDOC AND RODOCS.FILOCS = V.FILDOC))
+		
+		,
+
+		IIF(CAST(V.TERENT AS int) <> 0,
+
+			(SELECT RODCLI.CODCEP FROM RODCLI WHERE RODCLI.CODCLIFOR = V.TERENT)
+
+		,
+
+			IIF(CAST(RED.REDMU2 AS int) <> 0,
+	
+				(SELECT RODCLI.CODCEP FROM RODCLI WHERE RODCLI.CODCLIFOR = RED.REDMU2)
+		
+			,
+
+			IIF((select top 1 RODEND.CEPENT from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES) IS NULL, 
+	
+				CLI.CODCEP 
+		
+			, 
+	
+				(select top 1 RODEND.CEPENT from RODEND,RODCLI where V.ID_ENDENT = RODEND.ID and RODCLI.CODCLIFOR = V.CODDES )))
+
+		))) AS 'address_zipcode',
+
+V.QUANTI AS 'volume_quantity',
+
+begin_hour_a = CASE
+
+	WHEN V.DOC_ORIGEM = 'S'	                                           																													
+		
+		THEN format((SELECT RODCLI.HORINI FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODREM),'HH:mm:ss')													/* Remetente, quando documento = 'S' = COLETA */
+
+	WHEN V.DOC_ORIGEM IN ('C','O')																									/* Pagador, quando documento = 'C,S' = CTE,OST */
+
+		THEN format((SELECT RODCLI.HORINI FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODPAG),'HH:mm:ss')
+
+END,
+
+finish_hour_a = CASE
+
+	WHEN V.DOC_ORIGEM = 'S'	                                           																													
+		
+		THEN format((SELECT RODCLI.PARINI FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODREM),'HH:mm:ss')													/* Remetente, quando documento = 'S' = COLETA */
+
+	WHEN V.DOC_ORIGEM IN ('C','O')																									/* Pagador, quando documento = 'C,S' = CTE,OST */
+
+		THEN format((SELECT RODCLI.PARINI FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODPAG),'HH:mm:ss')
+
+END,
+
+begin_hour_b = CASE
+
+	WHEN V.DOC_ORIGEM = 'S'	                                           																													
+		
+		THEN format((SELECT RODCLI.PARFIM FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODREM),'HH:mm:ss')												/* Remetente, quando documento = 'S' = COLETA */
+
+	WHEN V.DOC_ORIGEM IN ('C','O')																									/* Pagador, quando documento = 'C,S' = CTE,OST */
+
+		THEN format((SELECT RODCLI.PARFIM FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODPAG),'HH:mm:ss')
+
+END,
+
+finish_hour_b = CASE
+
+	WHEN V.DOC_ORIGEM = 'S'	                                           																													
+		
+		THEN format((SELECT RODCLI.HORFIM FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODREM),'HH:mm:ss')													/* Remetente, quando documento = 'S' = COLETA */
+
+	WHEN V.DOC_ORIGEM IN ('C','O')																									/* Pagador, quando documento = 'C,S' = CTE,OST */
+
+		THEN format((SELECT RODCLI.HORFIM FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODPAG),'HH:mm:ss')
+
+END,
+
+V.VLRMER AS 'price',
+
+V.PESOKG AS 'weight',
+
+V.PESCUB AS 'cubic',
+
+V.ORDEM as 'ordem_atendimento',
+
+RTRIM(CAST(V.CODPAG AS CHAR(06))) +'-'+ upper((SELECT TOP 1 RODCLI.NOMEAB FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODPAG)) AS 'tag',
+
+V.SITUAC as 'status',
+
+tipo_manifesto = CASE            
+
+when V.TIPMAN = '1' then            
+                       'LOTACAO'            
+                when V.TIPMAN = '2' then            
+                       'TRANSFERENCIA'            
+                when V.TIPMAN = '3' then            
+                       'FRACIONADA'            
+                when V.TIPMAN = '4' then            
+                       'MISTA'            
+                when V.TIPMAN = '5' then            
+                       'RODORAPIDO'            
+                when V.TIPMAN = '6' then            
+                       'DISTRIBUICAO'            
+                when V.TIPMAN = '7' then            
+						'COLETA'            
+                when V.TIPMAN = '8' then            
+                       'REENTREGA'            
+                when V.TIPMAN = '9' then            
+                       'DEVOLUCAO'            
+                when V.TIPMAN = '10' then            
+                       'COMPLEMENTAR'            
+                when V.TIPMAN = '11' then            
+                       'VIAGEM'            
+				when V.TIPMAN = '12' then            
+                       'RETIRADA'            
+                when V.TIPMAN = '13' then            
+                       'TRANSF.AQUAVIARIA'            
+                when V.TIPMAN = '14' then            
+                       'AEREO'            
+                when V.TIPMAN = '15' then            
+                       'INTERNACIONAL'            
+end,
+
+V.DATATU as 'data_ultima_atualizacao',
+
+attendance_time = CASE
+
+	WHEN V.DOC_ORIGEM = 'S'	                                           																													
+		
+		THEN (SELECT CLI.PERHOR FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODREM)														/* Remetente, quando documento = 'S' = COLETA */
+
+	WHEN V.DOC_ORIGEM IN ('C','O')																									/* Pagador, quando documento = 'C,S' = CTE,OST */
+
+		THEN (SELECT CLI.PERHOR FROM RODCLI WHERE RODCLI.CODCLIFOR = V.CODDES)
+
+END ,
+
+ID_NF = CASE
+
+WHEN V.ID_NFC IS NOT NULL THEN
+
+	V.ID_NFC																														/*Busca a ligação para identificar
+																																	o Nr da NF no documento
+																																	de origem*/
+WHEN V.ID_ICO IS NOT NULL THEN
+
+	V.ID_ICO
+
+WHEN V.ID_IOS IS NOT NULL THEN
+
+	V.ID_IOS
+
+END
+
+from VW_RODMAN_DOC_ORIGEM_GAT V(nolock) 
+
+LEFT OUTER JOIN RODRED RED(nolock)ON V.CODDOC = RED.CODDOC AND V.SERDOC = RED.SERDOC AND V.FILDOC = RED.FILDOC AND RED.LIBERA = 'S' /*Ligação adicional para
+																																	encontrar se há documentos
+																																	associados com redespachos*/
+
+LEFT OUTER JOIN VW_SAC_SIMPLES_I SAC(nolock) ON SAC.NOTFIS = V.NOTFIS and SAC.SERIEN = V.SERIEN and                                 /* Ligação necessária Apenas
+																																	para identificar a data de entrega da NF*/
+SAC.CODDOC = V.CODDOC and SAC.FILDOC = V.FILDOC and SAC.SERDOC = V.SERDOC 
+																																										 																																										
+LEFT OUTER JOIN RODCLI CLI(nolock) ON SAC.CODDES = CLI.CODCLIFOR
+
+where 
+
+SAC.DATENT is null 
+AND V.DATBAI is null
+AND V.SITUAC not in ('B','D','I') 
+AND V.TIPMAN NOT IN ('10')
+AND EXISTS (SELECT 1 FROM RODCLI WHERE CODCLIFOR = V.CODPAG AND substring(OBSERV,1,14) = 'Integrar_Agile' AND OBSERV LIKE '%' + CAST(V.TIPMAN AS varchar(02)) + '%')
+GO
+
+GRANT SELECT ON dbo.VW_CARGA_MANIFESTOS TO agileprocess
+GO
+
