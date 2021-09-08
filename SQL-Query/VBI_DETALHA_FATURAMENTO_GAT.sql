@@ -1,0 +1,15 @@
+  SELECT F.TIPO_DOCUMENTO,
+         F.FILIAL,
+       CONVERT (VARCHAR, F.DATA, 3) AS DATA,
+       CONCAT (F.ESTADO,',',F.CIDADE) AS ESTADO_CIDADE,
+       SUM (F.VALOR)       
+    FROM VBI_DETALHA_FATURAMENTO F
+GROUP BY F.TIPO_DOCUMENTO,
+         F.FILIAL,
+         CONVERT (VARCHAR, F.DATA, 3),
+         CONCAT (F.ESTADO,',',F.CIDADE)
+         
+         
+         
+
+ 
